@@ -20,14 +20,7 @@ The model is **behavioral** — each block is a math equation, not a transistor 
 
 ## Architecture
 
-```
-        ┌─────────┐   I_cp   ┌──────────────┐  V_tune  ┌─────┐ φ_vco
- ref ──▶│ PFD / CP │ ───────▶│ Loop filter  │ ───────▶│ VCO │ ──────┐
-        └─────────┘          │ (R-C1 ∥ C2)  │          └─────┘       │
-             ▲               └──────────────┘                        │
-             │                       φ_vco / N                       │
-             └──────────────────────── ÷N ◀──────────────────────────┘
-```
+![CP-PLL block diagram](fig/cppll_diagram.svg)
 
 | Block | Role | File |
 |-------|------|------|
@@ -46,10 +39,18 @@ $$
 \phi_{err,pfd} = \big[(\phi_{err,raw} + \pi)\ \mathrm{mod}\ 2\pi\big] - \pi
 $$
 
+CP pulse width (clamped to one reference period) and polarity:
+
 $$
-t_{pulse} = \min\!\left(\frac{|\phi_{err,pfd}|}{2\pi f_{ref}},\ T_{ref}\right),
-\qquad
-I_{CP} = \begin{cases} +I_{CP,up} & \phi_{err,pfd} \ge 0 \\ -I_{CP,dn} & \phi_{err,pfd} < 0 \end{cases}
+t_{pulse} = \min\left(\frac{|\phi_{err,pfd}|}{2\pi f_{ref}},\ T_{ref}\right)
+$$
+
+$$
+I_{CP} =
+\begin{cases}
++I_{CP,up} & \text{if } \phi_{err,pfd} \ge 0 \\
+-I_{CP,dn} & \text{if } \phi_{err,pfd} < 0
+\end{cases}
 $$
 
 **Loop filter** (type-II):
@@ -132,7 +133,13 @@ Cycle slips: 5 at t = ['0.2', '0.4', '0.6', '1.3', '2.0'] us
 Final: f_inst=2.39923 GHz  Vtune=1496.13 mV  (target 1500.0 mV)
 ```
 
-→ locks after **5 cycle slips** at ~2 µs.
+→ locks after **5 cycle slips** at ~2 µs:
+
+![CP-PLL lock transient — 5 cycle slips](fig/pll_transient.svg)
+
+Sweeping the loop-filter resistor `R` (with a small Δf = 5 MHz) shows how phase margin maps to settling — under-, near-, and over-damped:
+
+![Settling vs R — three loop-filter cases](fig/pll_lf_cases.svg)
 
 ---
 
