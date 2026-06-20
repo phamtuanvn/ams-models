@@ -156,6 +156,6 @@ The large-signal model is cross-checked against the small-signal 2nd-order loop:
 
 Full write-ups (in Vietnamese) on the AMS blog — these articles use this exact model:
 
-- **CP-PLL Transient Simulation — Cycle Slip & Acquisition** (`/blog/pll-transient-sim-cycle-slip`) — builds the behavioral model, explains cycle slip, pull-in range.
-- **CP-PLL Locking Transient — R vs Settling** (`/blog/pll-locking-transient`) — sweeps `R`, links phase margin ↔ time-domain settling.
-- **PLL Loop Dynamics: Stability & Bandwidth** (`/blog/pll-loop-dynamics-stability-bandwidth`) — the linear / frequency-domain companion.
+- [**CP-PLL Transient Simulation — Cycle Slip & Acquisition**](https://ams-blog.com/blog/pll-transient-sim-cycle-slip) — builds the behavioral model, explains cycle slip, pull-in range.
+- [**CP-PLL Locking Transient — R vs Settling**](https://ams-blog.com/blog/pll-locking-transient) — sweeps `R`, links phase margin ↔ time-domain settling.
+- [**PLL Loop Dynamics: Stability & Bandwidth**](https://ams-blog.com/blog/pll-loop-dynamics-stability-bandwidth) — the linear / frequency-domain companion.
