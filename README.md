@@ -10,21 +10,23 @@ Mô hình behavioral cho các khối mạch analog/mixed-signal — phục vụ 
 
 | Block | Status | Topology |
 |-------|--------|----------|
-| PLL   | 🚧 In progress | Integer-N, Charge Pump |
+| **PLL** | ✅ Working — lock transient | Integer-N charge-pump, type-II loop filter |
 | LDO   | 📋 Planned | Linear regulator + feedback |
 | ADC   | 📋 Planned | SAR |
+
+→ PLL architecture, equations, and example plots: [`pll/README.md`](pll/README.md)
 
 ---
 
 ## Approach / Phương pháp mô phỏng
 
-- **PFD / CP / DIV:** Event-driven — triggered on rising edges
-- **LPF / VCO:** Analytical update between events (no fixed timestep)
-- **Validation:** Results cross-checked against linear transfer function (ζ, ωn, lock time)
+Event-driven, **no fixed global timestep**:
 
-This hybrid approach avoids fixed-timestep overhead while preserving accuracy for lock transient and phase noise analysis.
+- **Per reference edge** — the PFD computes the wrapped phase error and the charge pump emits a current pulse (width ∝ error, polarity = up/down).
+- **Between edges** — the loop-filter + VCO state `[φ_vco, V_tune, v_C1]` is integrated with an implicit solver (**Radau**), each reference period split into a CP-on and a CP-off phase. Implicit because the filter is stiff (`R·C1` and `R·C2` differ ~10×).
+- **Validation** — large-signal results cross-checked against the small-signal 2nd-order loop (ζ, ωn, phase margin, lock time).
 
-Cách tiếp cận hybrid này tránh được vấn đề timestep cố định, đồng thời vẫn đảm bảo độ chính xác cho phân tích lock transient và phase noise.
+Cách tiếp cận event-driven này (không dùng timestep cố định toàn cục) giữ độ chính xác cho lock transient và cycle slip mà không phải dùng step nhỏ trên toàn bộ mô phỏng.
 
 ---
 
@@ -32,18 +34,16 @@ Cách tiếp cận hybrid này tránh được vấn đề timestep cố định
 
 ```
 ams-models/
-├── pll/                  # PLL behavioral model
-│   ├── __init__.py
-│   ├── pfd.py            # Phase-frequency detector
-│   ├── cp.py             # Charge pump
-│   ├── lpf.py            # Loop filter
-│   ├── vco.py            # Voltage-controlled oscillator
-│   └── divider.py        # Integer divider
-├── ldo/                  # LDO behavioral model (planned)
-├── notebooks/            # Jupyter demo notebooks
-│   └── pll_demo.ipynb
-├── tests/                # pytest test cases
-│   └── test_pll.py
+├── pll/                   # CP-PLL behavioral model  ✅
+│   ├── README.md          # write-up: architecture, equations, figures
+│   ├── config.py          # parameters + 2nd-order loop-dynamics sanity block
+│   ├── pll_sim.py         # main driver — VCO-first loop, cycle-slip detection
+│   ├── solver.py          # hybrid 2-phase-per-cycle ODE (Radau)
+│   ├── plot.py            # 4-panel result plot
+│   ├── components/        # pfd.py · vco.py · loop_filter.py
+│   └── fig/               # block diagram + result plots
+├── ldo/                   # LDO model (planned)
+├── test/                  # tests (planned)
 ├── requirements.txt
 └── README.md
 ```
@@ -52,40 +52,29 @@ ams-models/
 
 ## Getting started / Bắt đầu
 
-**1. Clone and setup environment**
-
 ```bash
-git clone https://github.com/YOUR_USERNAME/ams-models.git
+git clone https://github.com/phamtuanvn/ams-models.git
 cd ams-models
 
 python -m venv .venv
 source .venv/Scripts/activate      # Windows (Git Bash)
-# source .venv/bin/activate        # Mac / Linux
+# source .venv/bin/activate        # macOS / Linux
 
 pip install -r requirements.txt
 ```
 
-**2. Run a PLL simulation**
-
-```python
-from pll import ChargePumpPLL
-
-pll = ChargePumpPLL(
-    f_ref=100e6,       # 100 MHz reference
-    N=24,              # Divide ratio → 2.4 GHz output
-    Kvco=200e6,        # 200 MHz/V
-    Icp=100e-6,        # 100 µA charge pump
-    R1=2e3, C1=100e-12, C2=10e-12
-)
-
-result = pll.simulate(t_end=20e-6)
-result.plot()
-```
-
-**3. Run tests**
+**Run the PLL simulation** (edit `pll/config.py` to change parameters):
 
 ```bash
-pytest tests/
+cd pll
+python pll_sim.py
+```
+
+Prints the cycle-slip count and final lock state, and writes a 4-panel plot to `pll/output/`. Example (default config, Δf = 300 MHz):
+
+```
+Cycle slips: 5 at t = ['0.2', '0.4', '0.6', '1.3', '2.0'] us
+Final: f_inst=2.39923 GHz  Vtune=1496.13 mV  (target 1500.0 mV)
 ```
 
 ---
@@ -96,26 +85,25 @@ pytest tests/
 numpy
 scipy
 matplotlib
-jupyter
 ```
 
 ---
 
 ## Background / Bối cảnh
 
-This repo is a companion to [AMS Blog](https://ams-blog.com) — a Vietnamese-language educational blog on analog/mixed-signal IC design.
+This repo is a companion to [AMS Blog](https://ams-blog.com) — a Vietnamese-language educational blog on analog/mixed-signal IC design. Several articles walk through this exact PLL model.
 
 Each model is built to be:
-- **Readable:** Code structure mirrors circuit topology
-- **Verifiable:** Key metrics (lock time, bandwidth, phase margin) cross-checked against hand calculations
-- **Educational:** Notebooks explain the theory alongside the simulation
+- **Readable:** code structure mirrors circuit topology
+- **Verifiable:** key metrics (lock time, phase margin, ζ) cross-checked against hand calculations
+- **Educational:** paired with a write-up that explains the theory alongside the simulation
 
-Repo này là tài liệu đi kèm với [AMS Blog](https://ams-blog.com) — kênh YouTube và blog tiếng Việt về thiết kế IC analog/mixed-signal.
+Repo này đi kèm [AMS Blog](https://ams-blog.com) — blog tiếng Việt về thiết kế IC analog/mixed-signal. Một số bài trên blog dùng đúng model PLL trong repo này.
 
 Mỗi mô hình được xây dựng để:
-- **Dễ đọc:** Cấu trúc code phản ánh topology mạch
-- **Kiểm chứng được:** Các chỉ số quan trọng (lock time, bandwidth, phase margin) được đối chiếu với tính toán lý thuyết
-- **Có giá trị học thuật:** Notebook giải thích lý thuyết song song với mô phỏng
+- **Dễ đọc:** cấu trúc code phản ánh topology mạch
+- **Kiểm chứng được:** các chỉ số quan trọng (lock time, phase margin, ζ) đối chiếu với tính toán tay
+- **Có giá trị học thuật:** đi kèm bài viết giải thích lý thuyết song song với mô phỏng
 
 ---
 
@@ -129,10 +117,10 @@ Mỗi mô hình được xây dựng để:
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE).
 
 ---
 
-> ⚠️ **Note:** This repo is under active development. APIs may change without notice.
+> ⚠️ **Note:** under active development — structure and APIs may change without notice.
 >
-> ⚠️ **Lưu ý:** Repo đang trong giai đoạn phát triển. API có thể thay đổi mà không báo trước.
+> ⚠️ **Lưu ý:** repo đang trong giai đoạn phát triển, cấu trúc/API có thể thay đổi mà không báo trước.
