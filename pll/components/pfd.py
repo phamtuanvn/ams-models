@@ -1,11 +1,11 @@
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from __future__ import annotations
 
 import numpy as np
-from config import F_REF, ICP_UP, ICP_DN, T_REF, TWO_PI
+
+from ..config import F_REF, ICP_DN, ICP_UP, T_REF, TWO_PI
 
 
-def pfd(phi_err_raw):
+def pfd(phi_err_raw: float) -> tuple[float, float, float]:
     """
     Returns (t_pulse_s, Icp_signed, phi_err_pfd).
     phi_err_raw: unwrapped accumulated phase error in radians.

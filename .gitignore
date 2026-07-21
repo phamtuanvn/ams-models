@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+ams_models.egg-info/
+pll/output/

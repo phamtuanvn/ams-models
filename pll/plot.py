@@ -1,13 +1,15 @@
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from __future__ import annotations
 
-import numpy as np
+import os
+
 import matplotlib
+import numpy as np
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-from config import F_OUT, F_FREE, KVCO, T_REF
 
+from .config import F_OUT
 
 BG       = '#ffffff'
 SURFACE  = '#f8fafc'
@@ -21,7 +23,7 @@ FS_TICK  = 10
 FS_ANNOT = 9
 
 
-def _style_ax(ax):
+def _style_ax(ax: plt.Axes) -> None:
     ax.set_facecolor(SURFACE)
     ax.tick_params(colors=TEXT, labelsize=FS_TICK)
     for spine in ax.spines.values():
@@ -31,12 +33,12 @@ def _style_ax(ax):
     ax.grid(True, color=BORDER, lw=0.5, ls=':')
 
 
-def _slip_lines(ax, times):
+def _slip_lines(ax: plt.Axes, times: list[float]) -> None:
     for ts in times:
         ax.axvline(ts, color=SLIP_CLR, alpha=0.35, lw=0.7, ls='--')
 
 
-def make_plots(data):
+def make_plots(data: dict) -> None:
     t          = data['t']
     slips      = data['cycle_slip_times']
     n_slips    = len(slips)
@@ -47,7 +49,7 @@ def make_plots(data):
     fig.patch.set_facecolor(BG)
     fig.subplots_adjust(hspace=0.10, left=0.09, right=0.97, top=0.93, bottom=0.07)
 
-    # ── Panel 1: f_inst ───────────────────────────────────────
+    # Panel 1: f_inst
     ax = axes[0]
     _style_ax(ax)
     ax.plot(t, data['f_inst'], color='#2563eb', lw=0.8,
@@ -62,7 +64,7 @@ def make_plots(data):
     ax.legend(loc='lower right', fontsize=FS_ANNOT, facecolor=BG,
               edgecolor=BORDER, labelcolor=TEXT)
 
-    # ── Panel 2: Vtune ────────────────────────────────────────
+    # Panel 2: Vtune
     ax = axes[1]
     _style_ax(ax)
     ax.plot(t, data['Vtune'], color='#db2777', lw=0.8,
@@ -75,7 +77,7 @@ def make_plots(data):
     ax.legend(loc='upper left', fontsize=FS_ANNOT,
               facecolor=BG, edgecolor=BORDER, labelcolor=TEXT)
 
-    # ── Panel 3: Phase error — raw + PFD view ─────────────────
+    # Panel 3: Phase error
     ax = axes[2]
     _style_ax(ax)
     ax.plot(t, data['phi_err_raw'], color='#d97706', lw=0.9,
@@ -109,7 +111,7 @@ def make_plots(data):
     ax.legend([l1, l2], [l1.get_label(), l2.get_label()], loc='upper right',
               fontsize=FS_ANNOT, facecolor=BG, edgecolor=BORDER, labelcolor=TEXT)
 
-    # ── Panel 4: CP pulse width ────────────────────────────────
+    # Panel 4: CP pulse width
     ax = axes[3]
     _style_ax(ax)
     ax.plot(t, data['t_pulse'], color='#16a34a', lw=0.8, rasterized=True)
