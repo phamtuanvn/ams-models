@@ -1,26 +1,34 @@
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from __future__ import annotations
 
 import numpy as np
+from numpy.typing import NDArray
 from scipy.integrate import solve_ivp
-from config import F_FREE, KVCO, R, C1, C2, TWO_PI
+
+from .components.loop_filter import lf_derivatives
+from .components.vco import vco_dphi_dt
+
+_FLOAT_ZERO = 1e-15
 
 
-def _odes(t, y, Icp_signed):
+def _odes(t: float, y: list[float], Icp_signed: float) -> list[float]:
     """
     Full ODE system. y = [phi_vco, Vtune, vC1].
     Vtune enters VCO continuously — not held constant during CP phase.
     """
-    phi_vco, Vtune, vC1 = y
+    _, Vtune, vC1 = y
 
-    dphi_dt   = TWO_PI * (F_FREE + KVCO * Vtune)
-    dVtune_dt = (Icp_signed - (Vtune - vC1) / R) / C2
-    dvC1_dt   = (Vtune - vC1) / (R * C1)
+    dphi_dt = vco_dphi_dt(Vtune)
+    dVtune_dt, dvC1_dt = lf_derivatives(Vtune, vC1, Icp_signed)
 
     return [dphi_dt, dVtune_dt, dvC1_dt]
 
 
-def sim_one_cycle(state, t_pulse, Icp_signed, T_ref):
+def sim_one_cycle(
+    state: NDArray[np.float64],
+    t_pulse: float,
+    Icp_signed: float,
+    T_ref: float,
+) -> NDArray[np.float64]:
     """
     Simulate one reference period with a 2-phase hybrid ODE.
 
@@ -32,8 +40,7 @@ def sim_one_cycle(state, t_pulse, Icp_signed, T_ref):
     """
     y = list(state)
 
-    # Phase 1: CP on
-    if t_pulse > 1e-15:
+    if t_pulse > _FLOAT_ZERO:
         sol = solve_ivp(
             lambda t, y: _odes(t, y, Icp_signed),
             [0.0, t_pulse], y,
@@ -41,9 +48,8 @@ def sim_one_cycle(state, t_pulse, Icp_signed, T_ref):
         )
         y = sol.y[:, -1].tolist()
 
-    # Phase 2: CP off
     t_off = T_ref - t_pulse
-    if t_off > 1e-15:
+    if t_off > _FLOAT_ZERO:
         sol = solve_ivp(
             lambda t, y: _odes(t, y, 0.0),
             [0.0, t_off], y,

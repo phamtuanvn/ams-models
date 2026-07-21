@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 
 F_REF    = 50e6       # Hz
