@@ -14,7 +14,7 @@ Simulates the PLL **time-domain** behaviour that a linear (Bode / phase-margin) 
 - How long does lock take, and how many **cycle slips** happen first?
 - How does settling / overshoot change with the loop-filter resistor $R$?
 
-The model is **behavioral** — each block is a math equation, not a transistor netlist — but it captures the non-linear PFD wrap and large-signal pull-in correctly.
+The model is **behavioral** — each block is a math equation, not a transistor netlist — but it captures the large-signal PFD behaviour (±2π range, cycle slips that keep the pump direction) and is cross-checked against an event-driven tri-state PFD (`event_check.py`).
 
 ---
 
@@ -24,7 +24,7 @@ The model is **behavioral** — each block is a math equation, not a transistor 
 
 | Block | Role | File |
 |-------|------|------|
-| **PFD + CP** | phase error → charge-pump current pulse (wrapped to ±π) | `components/pfd.py` |
+| **PFD + CP** | phase error → charge-pump current pulse (tri-state PFD, linear over ±2π) | `components/pfd.py` |
 | **Loop filter** | type-II, R–C1 in parallel with C2 | `components/loop_filter.py` |
 | **VCO** | tune voltage → phase | `components/vco.py` |
 | **Divider** | ÷N in the feedback path | inline in driver |
@@ -33,11 +33,13 @@ The model is **behavioral** — each block is a math equation, not a transistor 
 
 State vector $\mathbf{y} = [\phi_{vco},\ V_{tune},\ v_{C1}]$.
 
-**PFD + charge pump** — the PFD only sees the error wrapped into $(-\pi, \pi]$:
+**PFD + charge pump** — a tri-state PFD is linear over $(-2\pi, +2\pi)$. When the error reaches $\pm 2\pi$ one reference (or divider) edge is lost: the error drops by $2\pi$ but **keeps its sign**, so the CP keeps pumping the same way (this is what makes it a frequency detector). The model carries the phase already dropped, $\phi_{slip}$:
 
 $$
-\phi_{err,pfd} = \big[(\phi_{err,raw} + \pi)\ \mathrm{mod}\ 2\pi\big] - \pi
+\phi_{err,pfd} = \phi_{err,raw} - \phi_{slip}, \qquad \phi_{slip} \mathrel{+}= 2\pi \ \text{whenever } \phi_{err,pfd} \ge 2\pi
 $$
+
+(symmetric for the negative side). `pfd(..., mode='sampled')` instead wraps the error into $(-\pi, \pi]$ and flips the CP polarity at every wrap: a phase detector **without** frequency detection, kept only for comparison. With the default loop it needs 3 slips at Δf = 300 MHz and never locks at 400 MHz, while the PFD locks with no slip.
 
 CP pulse width (clamped to one reference period) and polarity:
 
@@ -76,11 +78,13 @@ The charge pump only injects current for $t_{pulse}$ seconds after each referenc
 - **Phase 1** $[0,\ t_{pulse}]$ — CP on  ($I_{CP} \neq 0$)
 - **Phase 2** $[t_{pulse},\ T_{ref}]$ — CP off ($I_{CP} = 0$)
 
-Each phase is integrated with **Radau** (implicit) because the filter has two very different time constants ($R\,C_2 = 75$ ns vs $R\,C_1 = 750$ ns) → stiff. Explicit solvers (RK45/DOP853) would crawl.
+Each phase is integrated with **Radau** (implicit). With the default values $R\,C_2 = 24$ ns and $R\,C_1 = 240$ ns are only 10× apart, so the system is not really stiff: RK45 gives the same result to ~9 digits and runs ~7× faster. Radau stays the safe default for when $C_2$ is made much smaller.
 
 **"VCO-first" ordering:** within each cycle the VCO is advanced first, *then* the reference edge arrives and the phase error / PFD are evaluated — this avoids a spurious 1-cycle jump on the first iteration.
 
-A **cycle slip** is detected when $\lfloor \phi_{err,raw} / 2\pi \rfloor$ changes between consecutive cycles.
+A **cycle slip** is counted each time the detector drops $2\pi$ (i.e. $\phi_{slip}$ changes).
+
+Frequency is read as the **cycle-mean VCO frequency** (phase advance over one $T_{ref}$), not from the $V_{tune}$ sample at the start of the cycle, which carries the CP ripple. "Lock" = that frequency enters and stays within ±2% of the initial Δf.
 
 ---
 
@@ -90,7 +94,8 @@ A **cycle slip** is detected when $\lfloor \phi_{err,raw} / 2\pi \rfloor$ change
 pll/
 ├── config.py          # parameters + 2nd-order loop-dynamics sanity block (ωn, PM, ζ)
 ├── solver.py          # sim_one_cycle() — 2-phase-per-cycle hybrid ODE (Radau)
-├── pll_sim.py         # main driver — VCO-first loop, cycle-slip detection
+├── pll_sim.py         # main driver — VCO-first loop, cycle-slip detection, lock_time()
+├── event_check.py     # cross-check vs event-driven tri-state PFD
 ├── plot.py            # 4-panel result plot
 └── components/
     ├── pfd.py         # PFD + charge pump
@@ -112,7 +117,7 @@ pll/
 
 Derived (printed by the loop-dynamics block in `config.py`): $\omega_n \approx 6.0$ Mrad/s, **$\zeta \approx 0.72$**, **PM $\approx 52.6°$**.
 
-> $I_{CP}$ is deliberately small (130 µA) so cycle slips are clearly visible. With a larger $I_{CP}$ each CP pulse moves $V_{tune}$ enough to correct the phase error before it exceeds $2\pi$ — fewer slips.
+> With these values the loop locks from Δf = 300 MHz **without** a slip (peak phase error 0.58 cycle). Slips start above Δf ≈ 501 MHz, or at 300 MHz if $I_{CP}$ is lowered to 20 µA (R raised to 40.8 kΩ to keep ζ = 0.72): 3 slips, lock in 2.68 µs.
 
 ---
 
@@ -121,21 +126,32 @@ Derived (printed by the loop-dynamics block in `config.py`): $\omega_n \approx 6
 ```bash
 pip install numpy scipy matplotlib
 cd pll
-python pll_sim.py
+python pll_sim.py            # tri-state PFD (default)
+python pll_sim.py sampled    # ±π detector, for comparison
+python event_check.py        # per-cycle model vs event-driven PFD
 ```
 
-Prints the slip count + final state and writes a 4-panel plot to `output/`.
+Prints the slip count, lock time and final state, and writes a 4-panel plot to `output/`.
 
 **Example (default config, Δf = 300 MHz):**
 
 ```
-Cycle slips: 5 at t = ['0.2', '0.4', '0.6', '1.3', '2.0'] us
-Final: f_inst=2.39923 GHz  Vtune=1496.13 mV  (target 1500.0 mV)
+Cycle slips: 0 at t = [] us
+Lock (±2% of df): 0.76 us
+Final: f_inst=2.40006 GHz  Vtune=1500.32 mV  (target 1500.0 mV)
 ```
 
-→ locks after **5 cycle slips** at ~2 µs:
+→ locks in **0.76 µs with no cycle slip**:
 
-![CP-PLL lock transient — 5 cycle slips](fig/pll_transient.svg)
+![CP-PLL lock transient — Δf = 300 MHz, no slip](fig/pll_transient.svg)
+
+`event_check.py` (event-driven vs per-cycle model):
+
+```
+df 300 MHz, Icp 130 uA:  event 0 slips, lock 0.78 us  |  per-cycle 0 slips, lock 0.76 us
+df 600 MHz, Icp 130 uA:  event 1 slips, lock 0.90 us  |  per-cycle 1 slips, lock 0.88 us
+df 300 MHz, Icp 20 uA:  event 3 slips, lock 2.74 us  |  per-cycle 3 slips, lock 2.68 us
+```
 
 Sweeping the loop-filter resistor `R` (with a small Δf = 5 MHz) shows how phase margin maps to settling — under-, near-, and over-damped:
 
@@ -156,6 +172,6 @@ The large-signal model is cross-checked against the small-signal 2nd-order loop:
 
 Full write-ups (in Vietnamese) on the AMS blog — these articles use this exact model:
 
-- [**CP-PLL Transient Simulation — Cycle Slip & Acquisition**](https://ams-blog.com/blog/pll-transient-sim-cycle-slip) — builds the behavioral model, explains cycle slip, pull-in range.
+- [**CP-PLL transient: when does the PFD slip a cycle?**](https://ams-blog.com/blog/pll-transient-sim-cycle-slip) — builds the behavioral model, finds the slip threshold, compares the PFD with a ±π detector.
 - [**CP-PLL Locking Transient — R vs Settling**](https://ams-blog.com/blog/pll-locking-transient) — sweeps `R`, links phase margin ↔ time-domain settling.
 - [**PLL Loop Dynamics: Stability & Bandwidth**](https://ams-blog.com/blog/pll-loop-dynamics-stability-bandwidth) — the linear / frequency-domain companion.

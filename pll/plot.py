@@ -50,8 +50,9 @@ def make_plots(data):
     # ── Panel 1: f_inst ───────────────────────────────────────
     ax = axes[0]
     _style_ax(ax)
-    ax.plot(t, data['f_inst'], color='#2563eb', lw=0.8,
-            rasterized=True, label='$f_{inst}$')
+    # cycle-mean frequency (from the phase step), free of the CP ripple on Vtune
+    ax.plot(t, data['f_avg'], color='#2563eb', lw=0.8,
+            rasterized=True, label='$f_{avg}$ (per $T_{ref}$)')
     ax.axhline(F_OUT / 1e9, color='#16a34a', lw=1.2, ls='--', alpha=0.9)
     _slip_lines(ax, slips)
     ax.set_ylabel('Frequency (GHz)', fontsize=FS_LABEL)
@@ -86,19 +87,20 @@ def make_plots(data):
     ax2 = ax.twinx()
     ax2.plot(t, data['phi_err_pfd'], color='#64748b', lw=0.5, alpha=0.6,
              label=r'$\phi_{err,pfd}$ (rad)', rasterized=True)
-    ax2.set_ylim(-np.pi * 1.3, np.pi * 1.3)
+    ax2.set_ylim(-np.pi * 2.3, np.pi * 2.3)
     ax2.set_ylabel(r'$\phi_{err,pfd}$ (rad)', fontsize=FS_ANNOT, color=MUTED)
     ax2.tick_params(colors=MUTED, labelsize=FS_TICK - 1)
-    ax2.axhline( np.pi, color=BORDER, lw=0.4, ls=':')
-    ax2.axhline(-np.pi, color=BORDER, lw=0.4, ls=':')
+    ax2.axhline( 2 * np.pi, color=BORDER, lw=0.4, ls=':')
+    ax2.axhline(-2 * np.pi, color=BORDER, lw=0.4, ls=':')
+    ax2.set_yticks([-2 * np.pi, -np.pi, 0, np.pi, 2 * np.pi])
     ax2.yaxis.set_major_formatter(ticker.FuncFormatter(
         lambda x, _: {0: '0', np.pi: '+π', -np.pi: '−π',
-                      np.pi/2: '+π/2', -np.pi/2: '−π/2'}.get(round(x, 6), '')))
+                      2*np.pi: '+2π', -2*np.pi: '−2π'}.get(round(x, 6), '')))
     for spine in ax2.spines.values():
         spine.set_color(BORDER)
 
     for ts in slips:
-        idx = np.searchsorted(t, ts)
+        idx = np.searchsorted(t, ts) - 1   # last cycle before the detector drops 2π
         if idx < len(t):
             ax.scatter(t[idx], data['phi_err_raw'][idx],
                        color=SLIP_CLR, s=30, zorder=5, linewidths=0)
@@ -117,7 +119,7 @@ def make_plots(data):
     _slip_lines(ax, slips)
     ax.set_ylabel('$t_{pulse}$ (ns)', fontsize=FS_LABEL)
     ax.set_xlabel('Time (µs)', fontsize=FS_LABEL)
-    ax.text(0.99, 0.88, f'$T_{{ref}}$ = {T_ref_ns:.0f} ns (saturation)',
+    ax.text(0.99, 0.88, f'$T_{{ref}}$ = {T_ref_ns:.0f} ns (max pulse)',
             transform=ax.transAxes, color=SLIP_CLR, fontsize=FS_ANNOT, ha='right')
 
     for ax in axes:
